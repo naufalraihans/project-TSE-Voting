@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Voting - E-Voting</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#f7fafc;color:#111;padding:24px}
+    .container{max-width:900px;margin:30px auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,0.06)}
+    .candidate{display:flex;align-items:center;gap:16px;padding:12px;border-radius:8px;border:1px solid #eee;margin-bottom:12px}
+    .candidate img{width:110px;height:110px;object-fit:cover;border-radius:8px}
+    .candidate .meta{flex:1}
+    .btnvote{background:#059669;color:#fff;padding:10px 14px;border-radius:8px;border:none;font-weight:700;cursor:pointer}
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .small{font-size:14px;color:#555}
+    .err{color:#b91c1c;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h2 id="welcome">Selamat Datang</h2>
+        <div class="small" id="subtitle">Pilih salah satu kandidat di bawah</div>
+      </div>
+      <div>
+        <button id="btnLogout">Logout</button>
+      </div>
+    </div>
+
+    <div id="candidatesArea">Loading kandidat...</div>
+    <div id="err" class="err"></div>
+  </div>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ;
+
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const welcome = document.getElementById("welcome");
+    const cArea = document.getElementById("candidatesArea");
+    const err = document.getElementById("err");
+    const btnLogout = document.getElementById("btnLogout");
+
+    const nim = localStorage.getItem("evoter_nim");
+    const nama = localStorage.getItem("evoter_nama");
+
+    if (!nim || !nama) {
+      // belum login
+      window.location.href = "/login.html";
+    } else {
+      welcome.textContent = `Selamat Datang ${nama}`;
+    }
+
+    btnLogout.addEventListener("click", () => {
+      localStorage.removeItem("evoter_nim");
+      localStorage.removeItem("evoter_nama");
+      localStorage.removeItem("evoter_pilihan");
+      localStorage.removeItem("evoter_voted");
+      window.location.href = "/login.html";
+    });
+
+    // load kandidat
+    (async function loadCandidates(){
+      try {
+        const { data: candidates, error } = await supabase.from("candidates").select("*").order("id", { ascending: true });
+        if (error) throw error;
+        if (!candidates || candidates.length === 0) {
+          cArea.innerHTML = "<div>Tidak ada kandidat.</div>";
+          return;
+        }
+
+        // render
+        cArea.innerHTML = "";
+        candidates.forEach(c => {
+          const node = document.createElement("div");
+          node.className = "candidate";
+          node.innerHTML = `
+            <img src="${c.foto_url || 'https://via.placeholder.com/110'}" alt="${c.nama_kandidat}" />
+            <div class="meta">
+              <strong>${c.nama_kandidat}</strong>
+              <div style="margin-top:6px">${c.deskripsi || ''}</div>
+            </div>
+            <div>
+              <button class="btnvote" data-id="${c.id}" data-name="${encodeURIComponent(c.nama_kandidat)}">PILIH</button>
+            </div>
+          `;
+          cArea.appendChild(node);
+        });
+
+        // attach listeners
+        document.querySelectorAll(".btnvote").forEach(b => b.addEventListener("click", onVote));
+      } catch (e) {
+        console.error(e);
+        err.textContent = "Gagal ambil kandidat. Cek console.";
+      }
+    })();
+
+    async function onVote(e) {
+      err.textContent = "";
+      const btn = e.currentTarget;
+      const candidateId = Number(btn.dataset.id);
+      const candidateName = decodeURIComponent(btn.dataset.name);
+      if (!confirm(`Yakin memilih: ${candidateName}?`)) return;
+
+      try {
+        // Pastikan lagi: voter belum voting
+        const { data: voterCheck, error: errCheck } = await supabase.from("voters").select("*").eq("nim", Number(nim)).limit(1).single();
+        if (errCheck) {
+          err.textContent = "Gagal verifikasi voter.";
+          return;
+        }
+        if (voterCheck.pilihan !== null && voterCheck.pilihan !== undefined) {
+          // sudah voting, redirect ke livecount
+          localStorage.setItem("evoter_pilihan", String(voterCheck.pilihan));
+          localStorage.setItem("evoter_voted", "true");
+          window.location.href = "/livecount.html";
+          return;
+        }
+
+        // update voters set pilihan = candidateId where nim = nim
+        const { data, error } = await supabase
+          .from("voters")
+          .update({ pilihan: candidateId })
+          .eq("nim", Number(nim))
+          .select()
+          .limit(1);
+
+        if (error) throw error;
+
+        // simpan local
+        localStorage.setItem("evoter_pilihan", String(candidateId));
+        localStorage.setItem("evoter_voted", "true");
+
+        // redirect ke livecount
+        window.location.href = "/livecount.html";
+      } catch (ex) {
+        console.error(ex);
+        err.textContent = "Gagal melakukan voting. Cek console.";
+      }
+    }
+  </script>
+</body>
+</html>

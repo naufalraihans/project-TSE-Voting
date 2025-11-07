@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Live Count - E-Voting</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#f3f4f6;padding:24px}
+    .wrap{max-width:900px;margin:30px auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,0.06)}
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .candidateRow{display:flex;align-items:center;gap:16px;padding:12px;border-radius:8px;border:1px solid #eee;margin-bottom:12px}
+    .candidateRow img{width:90px;height:90px;object-fit:cover;border-radius:8px}
+    .bar{height:18px;border-radius:8px;background:#e6e6e6;overflow:hidden}
+    .barInner{height:100%;background:#2563eb;width:0%}
+    .small{font-size:13px;color:#555}
+    .you{background:#fef3c7;padding:10px;border-radius:8px;margin-bottom:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <h2>Hasil Sementara</h2>
+        <div class="small">Data di-refresh manual (tekan tombol). Sistem mencegah voting ganda.</div>
+      </div>
+      <div>
+        <button id="btnRefresh">Refresh</button>
+        <button id="btnBack" style="margin-left:10px">Logout</button>
+      </div>
+    </div>
+
+    <div id="youBox" class="you" style="display:none"></div>
+
+    <div id="results">Loading hasil...</div>
+  </div>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ;
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const results = document.getElementById("results");
+    const youBox = document.getElementById("youBox");
+    const btnRefresh = document.getElementById("btnRefresh");
+    const btnBack = document.getElementById("btnBack");
+
+    const nim = localStorage.getItem("evoter_nim");
+    const nama = localStorage.getItem("evoter_nama");
+    const pilihan = localStorage.getItem("evoter_pilihan");
+    const voted = localStorage.getItem("evoter_voted");
+
+    // guard: hanya boleh akses kalau sudah voting
+    if (!nim || !voted) {
+      // redirect ke login
+      window.location.href = "/login.html";
+    }
+
+    btnRefresh.addEventListener("click", fetchResults);
+    btnBack.addEventListener("click", () => {
+      localStorage.removeItem("evoter_nim");
+      localStorage.removeItem("evoter_nama");
+      localStorage.removeItem("evoter_pilihan");
+      localStorage.removeItem("evoter_voted");
+      window.location.href = "/login.html";
+    });
+
+    async function fetchResults() {
+      results.innerHTML = "Mengambil hasil...";
+      try {
+        // 1) ambil kandidat
+        const { data: candidates, error: errCand } = await supabase.from("candidates").select("*").order("id", { ascending: true });
+        if (errCand) throw errCand;
+
+        // 2) ambil semua votes (cukup ringan untuk DB kecil); kita agregasi di client
+        const { data: votes, error: errVotes } = await supabase.from("voters").select("pilihan");
+        if (errVotes) throw errVotes;
+
+        // hitung totals per kandidat id
+        const totals = {};
+        votes.forEach(v => {
+          const p = v.pilihan;
+          if (p === null || p === undefined) return;
+          totals[p] = (totals[p] || 0) + 1;
+        });
+
+        // hitung max untuk skalasi bar
+        let max = 0;
+        candidates.forEach(c => { const t = totals[c.id] || 0; if (t > max) max = t; });
+        if (max === 0) max = 1;
+
+        // render
+        results.innerHTML = "";
+        candidates.forEach(c => {
+          const count = totals[c.id] || 0;
+          const percent = Math.round((count / max) * 100); // relative percent to largest candidate
+          const row = document.createElement("div");
+          row.className = "candidateRow";
+          row.innerHTML = `
+            <img src="${c.foto_url || 'https://via.placeholder.com/90'}" alt="${c.nama_kandidat}" />
+            <div style="flex:1">
+              <strong>${c.nama_kandidat}</strong>
+              <div class="small">${c.deskripsi || ''}</div>
+              <div style="margin-top:8px" class="bar"><div class="barInner" style="width:${percent}%"></div></div>
+            </div>
+            <div style="width:80px;text-align:center">
+              <div style="font-weight:700">${count}</div>
+              <div class="small">suara</div>
+            </div>
+          `;
+          results.appendChild(row);
+        });
+
+        // show which candidate the user picked
+        if (pilihan) {
+          // find candidate name
+          const csel = candidates.find(x => String(x.id) === String(pilihan));
+          youBox.style.display = "block";
+          youBox.innerHTML = `Anda memilih: <strong>${csel ? csel.nama_kandidat : 'ID '+pilihan}</strong>`;
+        } else {
+          youBox.style.display = "none";
+        }
+
+      } catch (e) {
+        console.error(e);
+        results.innerHTML = "Gagal ambil hasil. Cek console.";
+      }
+    }
+
+    // first load
+    fetchResults();
+  </script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Login - E-Voting</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;display:flex;align-items:center;justify-content:center;height:100vh;background:#f4f6f8}
+    .card{background:#fff;padding:24px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,0.06);width:360px}
+    label{display:block;margin-bottom:8px}
+    input{width:100%;padding:8px;margin-top:4px;border-radius:6px;border:1px solid #ddd}
+    button{width:100%;padding:10px;margin-top:12px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-weight:600;cursor:pointer}
+    .note{font-size:13px;color:#666;margin-top:10px}
+    .err{color:#b91c1c;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Login E-Voting</h2>
+    <p style="color:#333;margin-bottom:12px">Masukkan identitasmu — Username = NAMA (ALL CAPS), Password = NIM</p>
+
+    <label>
+      Username (NAMA, akan di-uppercase otomatis)
+      <input id="username" autocomplete="off" />
+    </label>
+
+    <label>
+      Password (NIM)
+      <input id="password" type="password" autocomplete="off" />
+    </label>
+
+    <button id="btnLogin">Login</button>
+    <div id="err" class="err"></div>
+    <div class="note">Jika sudah pernah voting, setelah login akan langsung diarahkan ke Live Count.</div>
+  </div>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ;
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const elUser = document.getElementById("username");
+    const elPass = document.getElementById("password");
+    const btn = document.getElementById("btnLogin");
+    const err = document.getElementById("err");
+
+    btn.addEventListener("click", async () => {
+      err.textContent = "";
+      const rawName = elUser.value.trim();
+      const nimInput = elPass.value.trim();
+
+      if (!rawName || !nimInput) { err.textContent = "Isi username & password dulu."; return; }
+
+      const nameUpper = rawName.toUpperCase();
+
+      try {
+        // Ambil voter berdasarkan nama (case-insensitive) & nim
+        const { data, error } = await supabase
+          .from("voters")
+          .select("*")
+          .ilike("nama", nameUpper) // ilike to match ignoring case; we'll still uppercase compare below
+          .eq("nim", Number(nimInput))
+          .limit(1)
+          .single();
+
+        if (error && error.code !== "PGRST116") { // PGRST116 = No rows? supabase may return error for single not found
+          // fallback: try searching differently
+        }
+
+        if (!data) {
+          err.textContent = "Nama atau NIM tidak ditemukan.";
+          return;
+        }
+
+        // double check uppercase equality to meet your rule: username must equal full caps of DB->nama
+        if (data.nama.toUpperCase() !== nameUpper) {
+          err.textContent = "Username harus persis NAMA lengkap (huruf besar semua).";
+          return;
+        }
+
+        // berhasil login -> simpan session minimal di localStorage
+        localStorage.setItem("evoter_nim", String(data.nim));
+        localStorage.setItem("evoter_nama", data.nama);
+        localStorage.setItem("evoter_pilihan", data.pilihan === null ? "" : String(data.pilihan));
+
+        // jika sudah voting: langsung ke livecount
+        if (data.pilihan !== null && data.pilihan !== undefined) {
+          // simpan voted flag
+          localStorage.setItem("evoter_voted", "true");
+          window.location.href = "/livecount.html";
+          return;
+        }
+
+        // jika belum voting -> ke halaman vote
+        window.location.href = "/vote.html";
+      } catch (e) {
+        console.error(e);
+        err.textContent = "Terjadi kesalahan. Cek console.";
+      }
+    });
+
+    // enter to login
+    [elUser, elPass].forEach(i => i.addEventListener("keyup", e => { if (e.key === "Enter") btn.click(); }));
+  </script>
+</body>
+</html>
