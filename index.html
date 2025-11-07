@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Redirecting…</title>
+
+  <!-- Meta refresh fallback (immediate) -->
+  <meta http-equiv="refresh" content="0; url=login.html">
+
+  <script>
+    // JS redirect yang lebih andal — pakai replace supaya back-button gak bikin loop
+    (function() {
+      try {
+        // kalau ada hash/query tertentu yang mau dipertahankan, bisa dimodifikasi di sini
+        window.location.replace('login.html');
+      } catch (e) {
+        // fallback ke meta refresh bila JS error
+        console.error(e);
+      }
+    })();
+  </script>
+
+  <style>
+    body{
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      display:flex;align-items:center;justify-content:center;height:100vh;margin:0;
+      background:#0f172a;color:#e2e8f0;
+    }
+    .box{ text-align:center; }
+    a{ color: #60a5fa; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Redirecting to login…</h1>
+    <p>Kalau kamu nggak otomatis diarahkan, klik <a href="login.html">Login page</a>.</p>
+  </div>
+</body>
+</html>
